@@ -3,6 +3,7 @@ import com.dampcake.bencode.Type;
 import com.google.gson.Gson;
 
 import java.util.List;
+import java.util.Map;
 
 public class Main {
   private static final Gson gson = new Gson();
@@ -39,7 +40,11 @@ public class Main {
     } else if (bencodedString.charAt(0) == 'l') {
         List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
         return decodedList;
-    } else {
+    } else if (bencodedString.charAt(0) == 'd') {
+        Map<String, Object> decodedDict = bencode.decode(bencodedBytes, Type.DICTIONARY);
+        return decodedDict;
+    }
+    else {
       throw new RuntimeException("Unsupported bencode type");
     }
   }
