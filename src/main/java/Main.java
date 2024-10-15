@@ -2,6 +2,8 @@ import com.dampcake.bencode.Bencode;
 import com.dampcake.bencode.Type;
 import com.google.gson.Gson;
 
+import java.util.List;
+
 public class Main {
   private static final Gson gson = new Gson();
 
@@ -34,6 +36,9 @@ public class Main {
     } else if (bencodedString.charAt(0) == 'i') {
         Long decodedInt = bencode.decode(bencodedBytes, Type.NUMBER);
         return decodedInt;
+    } else if (bencodedString.charAt(0) == 'l') {
+        List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
+        return decodedList;
     } else {
       throw new RuntimeException("Unsupported bencode type");
     }
