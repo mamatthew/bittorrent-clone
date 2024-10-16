@@ -15,38 +15,45 @@ public class Main {
         String bencodedValue = args[1];
         Object decoded;
         try {
-          decoded = decodeBencode(bencodedValue);
+          decoded = decodeBencode(bencodedValue.getBytes());
         } catch(RuntimeException e) {
           System.out.println(e.getMessage());
           return;
         }
         System.out.println(gson.toJson(decoded));
 
-    } else {
+    } else if ("info".equals(command)) {
+        String torrentFilePath = args[1];
+        byte[] torrentFileBytes = FileUtils.readTorrentFile(torrentFilePath);
+        Map<String, Object> decodedDict = (Map<String, Object>) decodeBencode(torrentFileBytes);
+        Map<String, Object> infoDict = (Map<String, Object>) decodedDict.get("info");
+        System.out.println("Tracker URL: " + decodedDict.get("announce"));
+        System.out.println("Length: " + infoDict.get("length"));
+    }
+
+    else {
       System.out.println("Unknown command: " + command);
     }
 
   }
 
-  static Object decodeBencode(String bencodedString) {
+  static Object decodeBencode(byte[] bencodedBytes) {
     Bencode bencode = new Bencode();
-    byte[] bencodedBytes = bencodedString.getBytes();
-    if (Character.isDigit(bencodedString.charAt(0))) {
-      String decodedString = bencode.decode(bencodedBytes, Type.STRING);
+      if (Character.isDigit((char) bencodedBytes[0])) {
+        String decodedString = bencode.decode(bencodedBytes, Type.STRING);
         return decodedString;
-    } else if (bencodedString.charAt(0) == 'i') {
+      } else if (bencodedBytes[0] == 'i') {
         Long decodedInt = bencode.decode(bencodedBytes, Type.NUMBER);
         return decodedInt;
-    } else if (bencodedString.charAt(0) == 'l') {
+      } else if (bencodedBytes[0] == 'l') {
         List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
         return decodedList;
-    } else if (bencodedString.charAt(0) == 'd') {
+      } else if (bencodedBytes[0] == 'd') {
         Map<String, Object> decodedDict = bencode.decode(bencodedBytes, Type.DICTIONARY);
         return decodedDict;
-    }
-    else {
-      throw new RuntimeException("Unsupported bencode type");
-    }
+      } else {
+        throw new RuntimeException("Unsupported bencode type");
+      }
   }
 
 }
