@@ -9,32 +9,30 @@ public class Main {
   private static final Gson gson = new Gson();
 
   public static void main(String[] args) throws Exception {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
     String command = args[0];
-    if("decode".equals(command)) {
-        String bencodedValue = args[1];
-        Object decoded;
-        try {
-          decoded = decodeBencode(bencodedValue.getBytes());
-        } catch(RuntimeException e) {
-          System.out.println(e.getMessage());
-          return;
-        }
-        System.out.println(gson.toJson(decoded));
-
-    } else if ("info".equals(command)) {
-        String torrentFilePath = args[1];
-        byte[] torrentFileBytes = FileUtils.readTorrentFile(torrentFilePath);
-        Map<String, Object> decodedDict = (Map<String, Object>) decodeBencode(torrentFileBytes);
-        Map<String, Object> infoDict = (Map<String, Object>) decodedDict.get("info");
-        System.out.println("Tracker URL: " + decodedDict.get("announce"));
-        System.out.println("Length: " + infoDict.get("length"));
+    switch(command) {
+        case "decode":
+            String bencodedValue = args[1];
+            Object decoded;
+            try {
+              decoded = decodeBencode(bencodedValue.getBytes());
+            } catch(RuntimeException e) {
+              System.out.println(e.getMessage());
+              return;
+            }
+            System.out.println(gson.toJson(decoded));
+            break;
+        case "info":
+            String torrentFilePath = args[1];
+            byte[] torrentFileBytes = FileUtils.readTorrentFile(torrentFilePath);
+            Map<String, Object> decodedDict = (Map<String, Object>) decodeBencode(torrentFileBytes);
+            Map<String, Object> infoDict = (Map<String, Object>) decodedDict.get("info");
+            System.out.println("Tracker URL: " + decodedDict.get("announce"));
+            System.out.println("Length: " + infoDict.get("length"));
+            break;
+        default:
+            System.out.println("Unknown command: " + command);
     }
-
-    else {
-      System.out.println("Unknown command: " + command);
-    }
-
   }
 
   static Object decodeBencode(byte[] bencodedBytes) {
