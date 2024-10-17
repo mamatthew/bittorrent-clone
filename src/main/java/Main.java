@@ -24,18 +24,17 @@ public class Main {
             break;
         case "info":
             String torrentFilePath = args[1];
-            byte[] torrentFileBytes = FileUtils.readTorrentFile(torrentFilePath);
-            Map<String, Object> decodedDict = (Map<String, Object>) decodeBencode(torrentFileBytes);
-            Map<String, Object> infoDict = (Map<String, Object>) decodedDict.get("info");
-            System.out.println("Tracker URL: " + decodedDict.get("announce"));
-            System.out.println("Length: " + infoDict.get("length"));
+            byte[] torrentFileBytes = Utils.readTorrentFile(torrentFilePath);
+            Torrent torrent = new Torrent(torrentFileBytes);
+            System.out.println("Tracker URL: " + torrent.getTrackerURL());
+            System.out.println("Length: " + torrent.getLength());
+            System.out.println("Info Hash: " + torrent.getInfoHash());
             break;
         default:
             System.out.println("Unknown command: " + command);
     }
   }
-
-  static Object decodeBencode(byte[] bencodedBytes) {
+  public static Object decodeBencode(byte[] bencodedBytes) {
     Bencode bencode = new Bencode();
       if (Character.isDigit((char) bencodedBytes[0])) {
         String decodedString = bencode.decode(bencodedBytes, Type.STRING);
