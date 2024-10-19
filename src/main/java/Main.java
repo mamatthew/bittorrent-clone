@@ -29,6 +29,12 @@ public class Main {
             System.out.println("Tracker URL: " + torrent.getTrackerURL());
             System.out.println("Length: " + torrent.getLength());
             System.out.println("Info Hash: " + torrent.getInfoHash());
+            System.out.println("Piece Length: " + torrent.getPieceLength());
+            System.out.println("Piece Hashes:");
+            List<String> pieces = torrent.getPieces();
+            for (int i = 0; i < pieces.size(); i++) {
+                System.out.println(pieces.get(i));
+            }
             break;
         default:
             System.out.println("Unknown command: " + command);
