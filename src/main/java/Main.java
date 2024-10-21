@@ -2,6 +2,7 @@ import com.dampcake.bencode.Bencode;
 import com.dampcake.bencode.Type;
 import com.google.gson.Gson;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -9,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -91,12 +93,48 @@ public class Main {
             }
 
             break;
-
+        case "handshake":
+            String torrentFilePath3 = args[1];
+            System.out.println("Torrent file path: " + torrentFilePath3);
+            String peerIPAndPort = args[2];
+            String peerIP = peerIPAndPort.split(":")[0];
+            System.out.println("Peer IP: " + peerIP);
+            int peerPort = Integer.parseInt(peerIPAndPort.split(":")[1]);
+            System.out.println("Peer Port: " + peerPort);
+            byte[] torrentFileBytes3 = Utils.readTorrentFile(torrentFilePath3);
+            Torrent torrent3 = new Torrent(torrentFileBytes3);
+            String infoHash2 = torrent3.getInfoHash();
+            System.out.println("Info Hash: " + infoHash2);
+            byte[] handshakeMessage = createHandshakeMessage(infoHash2);
+            System.out.println("Handshake message: " + new String(handshakeMessage, StandardCharsets.ISO_8859_1));
+            TCPClient tcpClient = new TCPClient();
+            byte[] handshakeResponse = tcpClient.sendAndReceive(peerIP, peerPort, handshakeMessage);
+            byte[] peerIdBytes3 = Arrays.copyOfRange(handshakeResponse, handshakeResponse.length - 20, handshakeResponse.length);
+            String peerId2 = Utils.byteToHexString(peerIdBytes3);
+            System.out.println("Peer ID: " + peerId2);
+            break;
         default:
             System.out.println("Unknown command: " + command);
     }
   }
-  public static Object decodeBencode(byte[] bencodedBytes) {
+
+    private static byte[] createHandshakeMessage(String infoHash2) {
+        // create a handshake message to send to the peer
+        ByteArrayOutputStream handshakeMessage = new ByteArrayOutputStream();
+        try {
+            handshakeMessage.write(19);
+            handshakeMessage.write("BitTorrent protocol".getBytes());
+            handshakeMessage.write(new byte[] {0,0,0,0,0,0,0,0});
+            handshakeMessage.write(Utils.hexStringToByteArray(infoHash2));
+            handshakeMessage.write("ABCDEFGHIJKLMNOPQRST".getBytes());
+            return handshakeMessage.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Error creating handshake message: " + e.getMessage());
+        }
+    }
+
+
+    public static Object decodeBencode(byte[] bencodedBytes) {
     Bencode bencode = new Bencode();
       if (Character.isDigit((char) bencodedBytes[0])) {
         String decodedString = bencode.decode(bencodedBytes, Type.STRING);
