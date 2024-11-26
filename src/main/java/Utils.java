@@ -17,6 +17,14 @@ public class Utils {
         }
     }
 
+    public static void writePieceToFile(String dest, byte[] piece) {
+        try {
+            Files.write(Paths.get(dest), piece);
+        } catch (IOException e) {
+            throw new RuntimeException("Error writing piece to file: " + e.getMessage());
+        }
+    }
+
     public static String byteToHexString(byte[] bytes) {
         StringBuilder hexString = new StringBuilder();
         for (byte b : bytes) {
@@ -35,13 +43,22 @@ public class Utils {
         return byteArray;
     }
 
-    public static String calculateSHA1(byte[] encodedInfoDict) {
+    public static String calculateSHA1(byte[] bytes) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            byte[] hash = digest.digest(encodedInfoDict);
+            byte[] hash = digest.digest(bytes);
             return byteToHexString(hash);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Error calculating SHA-1 hash: " + e.getMessage());
         }
+    }
+
+    public static byte[] intToByteArray(int value) {
+        return new byte[] {
+                (byte) (value >> 24),
+                (byte) (value >> 16),
+                (byte) (value >> 8),
+                (byte) value
+        };
     }
 }

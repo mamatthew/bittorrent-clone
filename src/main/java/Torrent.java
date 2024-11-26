@@ -49,6 +49,13 @@ public class Torrent {
         return length;
     }
 
+    public long getPieceLength(int index) {
+        if (index * pieceLength + pieceLength > length) {
+            return length - index * pieceLength;
+        }
+        return pieceLength;
+    }
+
     public String getInfoHash() {
         return infoHash;
     }
