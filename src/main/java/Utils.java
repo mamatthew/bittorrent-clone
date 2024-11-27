@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -18,11 +19,17 @@ public class Utils {
     }
 
     public static void writePieceToFile(String dest, byte[] piece) {
+        Path path = Paths.get(dest);
         try {
-            Files.write(Paths.get(dest), piece);
+            if (Files.exists(path)) {
+                Files.write(path, piece, StandardOpenOption.APPEND);
+            } else {
+                Files.write(path, piece);
+            }
         } catch (IOException e) {
             throw new RuntimeException("Error writing piece to file: " + e.getMessage());
         }
+
     }
 
     public static String byteToHexString(byte[] bytes) {
@@ -53,12 +60,4 @@ public class Utils {
         }
     }
 
-    public static byte[] intToByteArray(int value) {
-        return new byte[] {
-                (byte) (value >> 24),
-                (byte) (value >> 16),
-                (byte) (value >> 8),
-                (byte) value
-        };
-    }
 }

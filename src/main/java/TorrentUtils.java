@@ -26,8 +26,7 @@ public class TorrentUtils {
     private static final int HANDSHAKE_LENGTH = 68;
 
 
-    public static void downloadPiece(String src, String dest, int index) throws IOException {
-        Torrent torrent = getTorrentFromPath(src);
+    public static void downloadPiece(Torrent torrent, String dest, int index) throws IOException {
         List<String> peerList = null;
         try {
             peerList = getPeerList(torrent);
@@ -202,5 +201,18 @@ public class TorrentUtils {
         } catch (Exception e) {
             throw new RuntimeException("Error creating handshake message: " + e.getMessage());
         }
+    }
+
+    public static void downloadTorrent(String torrentFilePath, String storageFilePath) {
+        Torrent torrent = getTorrentFromPath(torrentFilePath);
+        int numPieces = torrent.getPieces().size();
+        for (int i = 0; i < numPieces; i++) {
+            try {
+                downloadPiece(torrent, storageFilePath, i);
+            } catch (IOException e) {
+                System.out.println("Error downloading piece: " + e.getMessage());
+            }
+        }
+
     }
 }
