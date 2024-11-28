@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -35,7 +36,7 @@ public class TorrentDownloader {
     public static byte[] downloadPieceFromPeer(Torrent torrent, String peer, int index) {
         try (Socket socket = new Socket(peer.split(":")[0], Integer.parseInt(peer.split(":")[1]))) {
             TCPService tcpService = new TCPService(socket);
-            performHandshake(torrent, tcpService);
+            performHandshake(torrent.getInfoHash(), tcpService, false);
             int pieceLength = (int) torrent.getPieceLength(index);
             return downloadPieceHelper(pieceLength, tcpService, index);
         } catch (Exception e) {
@@ -148,6 +149,11 @@ public class TorrentDownloader {
 
         HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
+        List<String> peerList = getPeerListFromHTTPResponse(response);
+        return peerList;
+    }
+
+    private static List<String> getPeerListFromHTTPResponse(HttpResponse<byte[]> response) {
         Bencode bencode = new Bencode(true);
         Map<String, Object> decodedResponse = bencode.decode(response.body(), Type.DICTIONARY);
         byte[] peersBytes = ((ByteBuffer) decodedResponse.get("peers")).array();
@@ -179,9 +185,8 @@ public class TorrentDownloader {
     }
 
 
-    static void performHandshake(Torrent torrent, TCPService tcpService) {
-        String infoHash = torrent.getInfoHash();
-        byte[] handshakeMessage = createHandshakeMessage(infoHash);
+    static void performHandshake(String infoHash, TCPService tcpService, boolean isMagnetHandshake) {
+        byte[] handshakeMessage = createHandshakeMessage(infoHash, isMagnetHandshake);
         tcpService.sendMessage(handshakeMessage);
         byte[] handshakeResponse = tcpService.waitForHandshakeResponse();
         validateHandshakeResponse(handshakeResponse, Utils.hexStringToByteArray(infoHash));
@@ -190,13 +195,17 @@ public class TorrentDownloader {
         System.out.println("Peer ID: " + peerId);
     }
 
-    static byte[] createHandshakeMessage(String infoHash2) {
+    static byte[] createHandshakeMessage(String infoHash2, boolean isMagnetHandshake) {
         // create a handshake message to send to the peer
         ByteArrayOutputStream handshakeMessage = new ByteArrayOutputStream();
         try {
             handshakeMessage.write(19);
             handshakeMessage.write("BitTorrent protocol".getBytes());
-            handshakeMessage.write(new byte[] {0,0,0,0,0,0,0,0});
+            byte[] reservedBytes = new byte[] {0,0,0,0,0,0,0,0};
+            if (isMagnetHandshake) {
+                reservedBytes[5] = 0x10;
+            }
+            handshakeMessage.write(reservedBytes);
             handshakeMessage.write(Utils.hexStringToByteArray(infoHash2));
             handshakeMessage.write("ABCDEFGHIJKLMNOPQRST".getBytes());
             return handshakeMessage.toByteArray();
@@ -262,5 +271,54 @@ public class TorrentDownloader {
                 pieceQueue.add(pieceIndex);
             }
         }
+    }
+
+    public static List<String> getPeerListFromMagnetInfo(Map<String, String> magnetInfoMap) {
+        // parse the magnet URL to extract the xt, dn, and tr parameters
+        // perform a GET request to the tracker URL
+        String trackerURL = String.format("%s?xt=%s&dn=%s",
+                magnetInfoMap.get("tr"),
+                magnetInfoMap.get("xt"),
+                magnetInfoMap.get("dn"));
+
+        if (trackerURL == null) {
+            throw new RuntimeException("No tracker URL found in magnet URL: " + trackerURL);
+        }
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(new URI(trackerURL))
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            return getPeerListFromHTTPResponse(response);
+        } catch (Exception e) {
+            throw new RuntimeException("Error getting peer list from tracker: " + e.getMessage());
+        }
+
+
+
+
+    }
+
+    public static Map<String, String> getParamsFromMagnetURL(String magnetURL) {
+        Map<String, String> map = new HashMap<>();
+        String[] parts = magnetURL.split("\\?");
+        if (parts.length != 2) {
+            throw new RuntimeException("Invalid magnet URL: " + magnetURL);
+        }
+        String[] params = parts[1].split("&");
+        for (String param : params) {
+            String[] keyValue = param.split("=");
+            if (keyValue.length != 2) {
+                throw new RuntimeException("Invalid parameter: " + param);
+            }
+            if (keyValue[0].equals("tr")) {
+                map.put("tr", URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8));
+            } else {
+                map.put(keyValue[0], keyValue[1]);
+            }
+        }
+        return map;
     }
 }

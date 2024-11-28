@@ -18,6 +18,7 @@ public class Main {
     String torrentFilePath;
         List<String> peerList;
     String peerIPAndPort;
+    Map<String, String> magnetInfo;
     switch(command) {
         case "decode":
             String bencodedValue = args[1];
@@ -68,10 +69,35 @@ public class Main {
             int peerPort = Integer.parseInt(peerIPAndPort.split(":")[1]);
             try (Socket socket = new Socket(peerIP, peerPort)){
                 TCPService tcpService = new TCPService(socket);
-                TorrentDownloader.performHandshake(torrent, tcpService);
+                TorrentDownloader.performHandshake(torrent.getInfoHash(), tcpService, false);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+            break;
+        case "magnet_parse":
+            String magnetURI = args[1];
+            magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURI);
+            System.out.println("Tracker URL: " + magnetInfo.get("tr"));
+            System.out.println("Info Hash: " + magnetInfo.get("xt").split(":")[2]);
+            break;
+        case "magnet_handshake":
+            String magnetURL = args[1].split(" ")[1];
+            magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+            System.out.println("Magnet Info: " + magnetInfo);
+            peerList = TorrentDownloader.getPeerListFromMagnetInfo(magnetInfo);
+            for (String peer : peerList) {
+                peerIP = peer.split(":")[0];
+                peerPort = Integer.parseInt(peer.split(":")[1]);
+                try (Socket socket = new Socket(peerIP, peerPort)){
+                    TCPService tcpService = new TCPService(socket);
+                    TorrentDownloader.performHandshake(magnetInfo.get("xt"), tcpService, true);
+                    break;
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+
             break;
         case "download_piece":
             String pieceStoragePath = args[2];
