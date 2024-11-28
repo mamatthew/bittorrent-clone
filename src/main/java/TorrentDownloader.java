@@ -187,6 +187,7 @@ public class TorrentDownloader {
         validateHandshakeResponse(handshakeResponse, Utils.hexStringToByteArray(infoHash));
         byte[] peerIdBytes = Arrays.copyOfRange(handshakeResponse, handshakeResponse.length - 20, handshakeResponse.length);
         String peerId = Utils.byteToHexString(peerIdBytes);
+        System.out.println("Peer ID: " + peerId);
     }
 
     static byte[] createHandshakeMessage(String infoHash2) {

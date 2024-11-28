@@ -78,15 +78,6 @@ public class Main {
             torrentFilePath = args[3];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             int pieceIndex = Integer.parseInt(args[4]);
-            try {
-                peerList = TorrentDownloader.getPeerList(torrent);
-            } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
             byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex);
             Utils.writePieceToFile(pieceStoragePath, piece);
             break;
@@ -97,7 +88,7 @@ public class Main {
             // sout number of pieces
             System.out.println("Number of pieces: " + torrent.getPieces().size());
             TorrentDownloader.downloadTorrent(torrent, storageFilePath);
-
+            break;
         default:
             System.out.println("Unknown command: " + command);
     }
