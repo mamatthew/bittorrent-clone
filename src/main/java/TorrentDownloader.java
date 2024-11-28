@@ -195,7 +195,7 @@ public class TorrentDownloader {
         System.out.println("Peer ID: " + peerId);
     }
 
-    static byte[] createHandshakeMessage(String infoHash2, boolean isMagnetHandshake) {
+    static byte[] createHandshakeMessage(String infoHash, boolean isMagnetHandshake) {
         // create a handshake message to send to the peer
         ByteArrayOutputStream handshakeMessage = new ByteArrayOutputStream();
         try {
@@ -203,12 +203,16 @@ public class TorrentDownloader {
             handshakeMessage.write("BitTorrent protocol".getBytes());
             byte[] reservedBytes = new byte[] {0,0,0,0,0,0,0,0};
             if (isMagnetHandshake) {
-                reservedBytes[5] = 0x10;
+                reservedBytes[5] = 16;
             }
+            System.out.println("Reserved bytes: " + reservedBytes[5]);
             handshakeMessage.write(reservedBytes);
-            handshakeMessage.write(Utils.hexStringToByteArray(infoHash2));
+            System.out.println("Info hash: " + infoHash);
+            handshakeMessage.write(Utils.hexStringToByteArray(infoHash));
             handshakeMessage.write("ABCDEFGHIJKLMNOPQRST".getBytes());
-            return handshakeMessage.toByteArray();
+            byte[] handshakeMessageBytes = handshakeMessage.toByteArray();
+            System.out.println("Handshake message: " + handshakeMessageBytes);
+            return handshakeMessageBytes;
         } catch (Exception e) {
             throw new RuntimeException("Error creating handshake message: " + e.getMessage());
         }
@@ -276,11 +280,23 @@ public class TorrentDownloader {
     public static List<String> getPeerListFromMagnetInfo(Map<String, String> magnetInfoMap) {
         // parse the magnet URL to extract the xt, dn, and tr parameters
         // perform a GET request to the tracker URL
-        String trackerURL = String.format("%s?xt=%s&dn=%s",
+        String infoHash = new String(Utils.hexStringToByteArray(magnetInfoMap.get("xt").split(":")[2]),
+                StandardCharsets.ISO_8859_1);
+        Random random = new Random();
+        byte[] peerIdBytes = new byte[10];
+        random.nextBytes(peerIdBytes);
+        String peerId = Utils.byteToHexString(peerIdBytes);
+        String trackerURL = String.format("%s?info_hash=%s&dn=%s&port=%d&downloaded=%d&uploaded=%d&left=%d&compact=%d&peer_id=%s",
                 magnetInfoMap.get("tr"),
-                magnetInfoMap.get("xt"),
-                magnetInfoMap.get("dn"));
-
+                URLEncoder.encode(infoHash, StandardCharsets.ISO_8859_1),
+                magnetInfoMap.get("dn"),
+                PORT,
+                0,
+                0,
+                1,
+                1,
+                peerId);
+        System.out.println("Tracker URL: " + trackerURL);
         if (trackerURL == null) {
             throw new RuntimeException("No tracker URL found in magnet URL: " + trackerURL);
         }

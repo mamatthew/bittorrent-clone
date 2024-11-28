@@ -81,7 +81,7 @@ public class Main {
             System.out.println("Info Hash: " + magnetInfo.get("xt").split(":")[2]);
             break;
         case "magnet_handshake":
-            String magnetURL = args[1].split(" ")[1];
+            String magnetURL = args[1];
             magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
             System.out.println("Magnet Info: " + magnetInfo);
             peerList = TorrentDownloader.getPeerListFromMagnetInfo(magnetInfo);
@@ -90,7 +90,7 @@ public class Main {
                 peerPort = Integer.parseInt(peer.split(":")[1]);
                 try (Socket socket = new Socket(peerIP, peerPort)){
                     TCPService tcpService = new TCPService(socket);
-                    TorrentDownloader.performHandshake(magnetInfo.get("xt"), tcpService, true);
+                    TorrentDownloader.performHandshake(magnetInfo.get("xt").split(":")[2], tcpService, true);
                     break;
                 } catch (IOException e) {
                     throw new RuntimeException(e);
