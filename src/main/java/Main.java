@@ -32,7 +32,7 @@ public class Main {
             break;
         case "info":
             torrentFilePath = args[1];
-            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             System.out.println("Tracker URL: " + torrent.getTrackerURL());
             System.out.println("Length: " + torrent.getLength());
             System.out.println("Info Hash: " + torrent.getInfoHash());
@@ -45,9 +45,9 @@ public class Main {
             break;
         case "peers":
             torrentFilePath = args[1];
-            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             try {
-                peerList = TorrentUtils.getPeerList(torrent);
+                peerList = TorrentDownloader.getPeerList(torrent);
             } catch (URISyntaxException e) {
                 throw new RuntimeException(e);
             } catch (IOException e) {
@@ -62,13 +62,13 @@ public class Main {
             break;
         case "handshake":
             torrentFilePath = args[1];
-            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             peerIPAndPort = args[2];
             String peerIP = peerIPAndPort.split(":")[0];
             int peerPort = Integer.parseInt(peerIPAndPort.split(":")[1]);
             try (Socket socket = new Socket(peerIP, peerPort)){
                 TCPService tcpService = new TCPService(socket);
-                TorrentUtils.performHandshake(torrent, tcpService);
+                TorrentDownloader.performHandshake(torrent, tcpService);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -76,18 +76,27 @@ public class Main {
         case "download_piece":
             String pieceStoragePath = args[2];
             torrentFilePath = args[3];
-            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             int pieceIndex = Integer.parseInt(args[4]);
             try {
-                TorrentUtils.downloadPiece(torrent, pieceStoragePath, pieceIndex);
+                peerList = TorrentDownloader.getPeerList(torrent);
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
             } catch (IOException e) {
                 throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
+            byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex);
+            Utils.writePieceToFile(pieceStoragePath, piece);
             break;
         case "download":
             String storageFilePath = args[2];
             torrentFilePath = args[3];
-            TorrentUtils.downloadTorrent(torrentFilePath, storageFilePath);
+            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            // sout number of pieces
+            System.out.println("Number of pieces: " + torrent.getPieces().size());
+            TorrentDownloader.downloadTorrent(torrent, storageFilePath);
 
         default:
             System.out.println("Unknown command: " + command);

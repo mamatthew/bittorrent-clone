@@ -1,7 +1,8 @@
 import com.dampcake.bencode.Bencode;
 import com.dampcake.bencode.Type;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -12,8 +13,11 @@ import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
-public class TorrentUtils {
+public class TorrentDownloader {
 
     private static final int PORT = 6881;
 
@@ -23,44 +27,48 @@ public class TorrentUtils {
     private static final byte REQUEST_MESSAGE_ID = 6;
     private static final byte PIECE_MESSAGE_ID = 7;
     private static final int BLOCK_SIZE = 16384;
-    private static final int HANDSHAKE_LENGTH = 68;
 
+    private static Queue<Integer> pieceQueue = new ConcurrentLinkedQueue<>();
+    private static Map<Integer, byte[]> bufferMap = new ConcurrentHashMap<>();
+    private static Lock bufferLock = new ReentrantLock();
 
-    public static void downloadPiece(Torrent torrent, String dest, int index) throws IOException {
+    public static byte[] downloadPieceFromPeer(Torrent torrent, String peer, int index) {
+        try (Socket socket = new Socket(peer.split(":")[0], Integer.parseInt(peer.split(":")[1]))) {
+            TCPService tcpService = new TCPService(socket);
+            performHandshake(torrent, tcpService);
+            int pieceLength = (int) torrent.getPieceLength(index);
+            return downloadPieceHelper(pieceLength, tcpService, index);
+        } catch (Exception e) {
+            throw new RuntimeException("Error downloading piece from peer: " + e.getMessage());
+        }
+    }
+    public static byte[] downloadPiece(Torrent torrent, int index) {
         List<String> peerList = null;
         try {
             peerList = getPeerList(torrent);
         } catch (Exception e) {
-            System.out.println("Error getting peer list: " + e.getMessage());
+            throw new RuntimeException("Error getting peer list: " + e.getMessage());
         }
 
         if (peerList == null || peerList.size() == 0) {
-            System.out.println("No peers found for torrent");
-            return;
+            throw new RuntimeException("No peers available to download from");
         }
         byte piece[] = null;
         for (String peer : peerList) {
-            String[] ipAndPort = peer.split(":");
-            String ip = ipAndPort[0];
-            int port = Integer.parseInt(ipAndPort[1]);
-            try (Socket socket = new Socket(ip, port)){
-                TCPService tcpService = new TCPService(socket);
-                performHandshake(torrent, tcpService);
-                System.out.println("Downloading piece from peer: " + peer);
-                piece = downloadPieceHelper(torrent, tcpService, index);
+            try {
+                piece = downloadPieceFromPeer(torrent, peer, index);
                 break;
             } catch (Exception e) {
-                System.out.println("Error downloading piece from peer: " + e.getMessage());
+                System.out.println("Error downloading piece from peer: " + peer + ", " + e.getMessage());
             }
         }
         if (piece == null) {
-            System.out.println("Failed to download piece from all peers");
-            return;
+            throw new RuntimeException("Failed to download piece: " + index);
         }
         if (!validatePieceHash(torrent.getPieces().get(index), piece)) {
-            return;
+            throw new RuntimeException("Piece hash validation failed: " + index);
         }
-        Utils.writePieceToFile(dest, piece);
+        return piece;
     }
 
     private static boolean validatePieceHash(String expectedPieceHash, byte[] piece) {
@@ -71,22 +79,20 @@ public class TorrentUtils {
         return expectedPieceHash.equals(actualPieceHash);
     }
 
-    private static byte[] downloadPieceHelper(Torrent torrent, TCPService tcpService, int index) throws Exception {
+    private static byte[] downloadPieceHelper(int pieceLength, TCPService tcpService, int index) throws Exception {
         byte[] bitfieldMessage = tcpService.waitForMessage();
         if (bitfieldMessage[0] != BITFIELD_MESSAGE_ID) {
             throw new RuntimeException("Expected bitfield message (5) from peer, but received different message: " + bitfieldMessage[0]);
         }
-        System.out.println("Received bitfield message from peer");
+
         // send an interested message to the peer
         byte[] interestedMessage = new byte[]{0, 0, 0, 1, INTERESTED_MESSAGE_ID};
-        System.out.println("Sending interested message to peer");
         tcpService.sendMessage(interestedMessage);
         byte[] unchokeMessage = tcpService.waitForMessage();
         if (unchokeMessage[0] != UNCHOKE_MESSAGE_ID) {
             throw new RuntimeException("Expected unchoke message (1) from peer, but received different message: " + unchokeMessage[0]);
         }
-        System.out.println("Received unchoke message from peer");
-        int pieceLength = (int) torrent.getPieceLength(index);
+
         int blocks = (int) Math.ceil((double) pieceLength / BLOCK_SIZE);
         int offset = 0;
         byte[] piece = new byte[pieceLength];
@@ -94,7 +100,6 @@ public class TorrentUtils {
             int blockLength = Math.min(BLOCK_SIZE, pieceLength - offset);
             byte[] requestPayload = TCPService.createRequestPayload(index, offset, blockLength);
             tcpService.sendMessage(REQUEST_MESSAGE_ID, requestPayload);
-
             byte[] pieceMessage = tcpService.waitForMessage();
             if (pieceMessage[0] != PIECE_MESSAGE_ID) {
                 throw new RuntimeException("Expected piece message (7) from peer, but received different message: " + pieceMessage[0]);
@@ -171,21 +176,17 @@ public class TorrentUtils {
         if (!Arrays.equals(expectedInfoHash, receivedInfoHash)) {
             throw new RuntimeException("Info hash mismatch");
         }
-        System.out.println("Handshake response validated");
     }
 
 
     static void performHandshake(Torrent torrent, TCPService tcpService) {
         String infoHash = torrent.getInfoHash();
         byte[] handshakeMessage = createHandshakeMessage(infoHash);
-        System.out.println("Sending handshake message to peer");
         tcpService.sendMessage(handshakeMessage);
-        System.out.println("Waiting for handshake response from peer");
         byte[] handshakeResponse = tcpService.waitForHandshakeResponse();
         validateHandshakeResponse(handshakeResponse, Utils.hexStringToByteArray(infoHash));
         byte[] peerIdBytes = Arrays.copyOfRange(handshakeResponse, handshakeResponse.length - 20, handshakeResponse.length);
         String peerId = Utils.byteToHexString(peerIdBytes);
-        System.out.println("Peer ID: " + peerId);
     }
 
     static byte[] createHandshakeMessage(String infoHash2) {
@@ -203,16 +204,62 @@ public class TorrentUtils {
         }
     }
 
-    public static void downloadTorrent(String torrentFilePath, String storageFilePath) {
-        Torrent torrent = getTorrentFromPath(torrentFilePath);
+    public static void downloadTorrent(Torrent torrent, String storageFilePath) {
         int numPieces = torrent.getPieces().size();
+
+        // create a queue of pieces to download
+        // add all the pieces to the queue
         for (int i = 0; i < numPieces; i++) {
+            pieceQueue.add(i);
+        }
+        // create a connection pool to each peer
+        List<String> peerList;
+        try {
+            peerList = getPeerList(torrent);
+            int numPeers = peerList.size();
+            ExecutorService executorService = Executors.newFixedThreadPool(numPeers);
+            for (String peer : peerList) {
+                executorService.submit(() -> worker(torrent, peer));
+            }
+            executorService.shutdown();
             try {
-                downloadPiece(torrent, storageFilePath, i);
-            } catch (IOException e) {
+                executorService.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                System.out.println("Error waiting for executor service to terminate: " + e.getMessage());
+            }
+            // write the pieces to the file
+            for (int i = 0; i < numPieces; i++) {
+                bufferLock.lock();
+                try {
+                    Utils.writePieceToFile(storageFilePath, bufferMap.get(i));
+                } finally {
+                    bufferLock.unlock();
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error getting peer list: " + e.getMessage());
+        }
+    }
+    private static void worker(Torrent torrent, String peer) {
+        while (true) {
+            Integer pieceIndex = pieceQueue.poll();
+            if (pieceIndex == null) {
+                break;
+            }
+            // calculate the piece length based on the piece index
+            try {
+                byte[] piece = downloadPieceFromPeer(torrent, peer, pieceIndex);
+                bufferLock.lock();
+                try {
+                    bufferMap.put(pieceIndex, piece);
+                    System.out.println("Downloaded piece: " + pieceIndex);
+                } finally {
+                    bufferLock.unlock();
+                }
+            } catch (Exception e) {
                 System.out.println("Error downloading piece: " + e.getMessage());
+                pieceQueue.add(pieceIndex);
             }
         }
-
     }
 }
