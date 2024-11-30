@@ -360,4 +360,15 @@ public class TorrentDownloader {
         System.out.println("Extension handshake message created");
         return buffer.array();
     }
+
+    public static Map<String, Long> parseExtensionHandshakeResponse(byte[] extensionHandshakeResponse) {
+        byte[] extensionDictBytes = Arrays.copyOfRange(extensionHandshakeResponse, 2, extensionHandshakeResponse.length);
+        Map<String, Object> extensionDict = new Bencode(false).decode(extensionDictBytes, Type.DICTIONARY);
+        Map<String, Long> metaDataIDMap = new HashMap<>();
+        Map<String, Long> m = (Map<String, Long>) extensionDict.get("m");
+        for (Map.Entry<String, Long> entry : m.entrySet()) {
+            metaDataIDMap.put(entry.getKey(), entry.getValue());
+        }
+        return metaDataIDMap;
+    }
 }

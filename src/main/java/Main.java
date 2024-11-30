@@ -103,6 +103,10 @@ public class Main {
                     extensionList.add("ut_metadata");
                     byte[] extensionHandshakeMessage = TorrentDownloader.createExtensionHandshakeMessage(extensionList);
                     tcpService.sendMessage(extensionHandshakeMessage);
+                    byte[] extensionHandshakeResponse = tcpService.waitForMessage();
+                    Map<String, Long> metaDataIDMap = TorrentDownloader.parseExtensionHandshakeResponse(extensionHandshakeResponse);
+                    System.out.println("Peer Metadata Extension ID: " + metaDataIDMap.get("ut_metadata"));
+
                     break;
                 } catch (Exception e) {
                     System.out.println("Failed to connect to peer: " + peer + " - " + e.getMessage());
