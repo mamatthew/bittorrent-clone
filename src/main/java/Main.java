@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -91,13 +92,22 @@ public class Main {
                 try (Socket socket = new Socket(peerIP, peerPort)){
                     TCPService tcpService = new TCPService(socket);
                     TorrentDownloader.performHandshake(magnetInfo.get("xt").split(":")[2], tcpService, true);
+                    // wait for bitfield message
+                    byte[] bitfieldMessage = tcpService.waitForMessage();
+                    if (bitfieldMessage[0] != 5) {
+                        System.out.println("Expected bitfield message, received different message type: " + bitfieldMessage[4]);
+                    }
+                    System.out.println("Received bitfield message");
+                    // send extension handshake
+                    List<String> extensionList = new ArrayList<>();
+                    extensionList.add("ut_metadata");
+                    byte[] extensionHandshakeMessage = TorrentDownloader.createExtensionHandshakeMessage(extensionList);
+                    tcpService.sendMessage(extensionHandshakeMessage);
                     break;
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                } catch (Exception e) {
+                    System.out.println("Failed to connect to peer: " + peer + " - " + e.getMessage());
                 }
-
             }
-
             break;
         case "download_piece":
             String pieceStoragePath = args[2];

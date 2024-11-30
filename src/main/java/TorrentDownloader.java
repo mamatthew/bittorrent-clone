@@ -169,7 +169,7 @@ public class TorrentDownloader {
     }
 
     private static void validateHandshakeResponse(byte[] response,
-                                                  byte[] expectedInfoHash) {
+                                                  byte[] expectedInfoHash, boolean isMagnetHandshake) {
         if (response[0] != 19) {
             throw new RuntimeException("Invalid protocol length: " + response[0]);
         }
@@ -177,6 +177,11 @@ public class TorrentDownloader {
         String protocol = new String(protocolBytes, StandardCharsets.ISO_8859_1);
         if (!"BitTorrent protocol".equals(protocol)) {
             throw new RuntimeException("Invalid protocol: " + protocol);
+        }
+        if (isMagnetHandshake) {
+            if (response[25] != 16) {
+                throw new RuntimeException("Invalid reserved byte: " + response[25]);
+            }
         }
         byte[] receivedInfoHash = Arrays.copyOfRange(response, 28, 48);
         if (!Arrays.equals(expectedInfoHash, receivedInfoHash)) {
@@ -189,7 +194,7 @@ public class TorrentDownloader {
         byte[] handshakeMessage = createHandshakeMessage(infoHash, isMagnetHandshake);
         tcpService.sendMessage(handshakeMessage);
         byte[] handshakeResponse = tcpService.waitForHandshakeResponse();
-        validateHandshakeResponse(handshakeResponse, Utils.hexStringToByteArray(infoHash));
+        validateHandshakeResponse(handshakeResponse, Utils.hexStringToByteArray(infoHash), isMagnetHandshake);
         byte[] peerIdBytes = Arrays.copyOfRange(handshakeResponse, handshakeResponse.length - 20, handshakeResponse.length);
         String peerId = Utils.byteToHexString(peerIdBytes);
         System.out.println("Peer ID: " + peerId);
@@ -336,5 +341,23 @@ public class TorrentDownloader {
             }
         }
         return map;
+    }
+
+    public static byte[] createExtensionHandshakeMessage(List<String> extensionList) {
+        Map<String, Map<String, Integer>> extensionDict = new HashMap<>();
+        Map<String, Integer> m = new HashMap<>();
+        for (String extension : extensionList) {
+            m.put(extension, new Random().nextInt(255) + 1);
+        }
+        extensionDict.put("m", m);
+        byte[] extensionDictBytes = new Bencode(true).encode(extensionDict);
+        // create byte array for the extension handshake message with a 4 byte length prefix, 1 byte message ID, 1 byte extension messageid, and the extension dictionary
+        ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 1 + extensionDictBytes.length);
+        buffer.putInt(1 + 1 + extensionDictBytes.length);
+        buffer.put((byte) 20);
+        buffer.put((byte) 0);
+        buffer.put(extensionDictBytes);
+        System.out.println("Extension handshake message created");
+        return buffer.array();
     }
 }
