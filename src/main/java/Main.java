@@ -1,11 +1,11 @@
 import com.dampcake.bencode.Bencode;
 import com.dampcake.bencode.Type;
 import com.google.gson.Gson;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -19,7 +19,7 @@ public class Main {
     String torrentFilePath;
         List<String> peerList;
     String peerIPAndPort;
-    Map<String, String> magnetInfo;
+    String magnetURL;
     switch(command) {
         case "decode":
             String bencodedValue = args[1];
@@ -77,41 +77,25 @@ public class Main {
             break;
         case "magnet_parse":
             String magnetURI = args[1];
-            magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURI);
+            Map<String,String> magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURI);
             System.out.println("Tracker URL: " + magnetInfo.get("tr"));
             System.out.println("Info Hash: " + magnetInfo.get("xt").split(":")[2]);
             break;
         case "magnet_handshake":
-            String magnetURL = args[1];
-            magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
-            System.out.println("Magnet Info: " + magnetInfo);
-            peerList = TorrentDownloader.getPeerListFromMagnetInfo(magnetInfo);
-            for (String peer : peerList) {
-                peerIP = peer.split(":")[0];
-                peerPort = Integer.parseInt(peer.split(":")[1]);
-                try (Socket socket = new Socket(peerIP, peerPort)){
-                    TCPService tcpService = new TCPService(socket);
-                    TorrentDownloader.performHandshake(magnetInfo.get("xt").split(":")[2], tcpService, true);
-                    // wait for bitfield message
-                    byte[] bitfieldMessage = tcpService.waitForMessage();
-                    if (bitfieldMessage[0] != 5) {
-                        System.out.println("Expected bitfield message, received different message type: " + bitfieldMessage[4]);
-                    }
-                    System.out.println("Received bitfield message");
-                    // send extension handshake
-                    List<String> extensionList = new ArrayList<>();
-                    extensionList.add("ut_metadata");
-                    byte[] extensionHandshakeMessage = TorrentDownloader.createExtensionHandshakeMessage(extensionList);
-                    tcpService.sendMessage(extensionHandshakeMessage);
-                    byte[] extensionHandshakeResponse = tcpService.waitForMessage();
-                    Map<String, Long> metaDataIDMap = TorrentDownloader.parseExtensionHandshakeResponse(extensionHandshakeResponse);
-                    System.out.println("Peer Metadata Extension ID: " + metaDataIDMap.get("ut_metadata"));
-
-                    break;
-                } catch (Exception e) {
-                    System.out.println("Failed to connect to peer: " + peer + " - " + e.getMessage());
-                }
+            magnetURL = args[1];
+            TorrentDownloader.performMagnetHandshake(magnetURL);
+            break;
+        case "magnet_info":
+            magnetURL = args[1];
+            Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshake(magnetURL);
+            TCPService tcpService = handshakeResult.getLeft();
+            long extensionId = handshakeResult.getRight();
+            if (tcpService == null) {
+                System.out.println("Failed to connect to any peers");
+                return;
             }
+            byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, extensionId);
+            tcpService.sendMessage(metadataRequestMessage);
             break;
         case "download_piece":
             String pieceStoragePath = args[2];

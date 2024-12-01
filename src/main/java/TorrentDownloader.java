@@ -1,13 +1,10 @@
 import com.dampcake.bencode.Bencode;
 import com.dampcake.bencode.Type;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.Socket;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
+import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -361,14 +358,63 @@ public class TorrentDownloader {
         return buffer.array();
     }
 
-    public static Map<String, Long> parseExtensionHandshakeResponse(byte[] extensionHandshakeResponse) {
+    public static Map<String, Object> parseExtensionHandshakeResponse(byte[] extensionHandshakeResponse) {
         byte[] extensionDictBytes = Arrays.copyOfRange(extensionHandshakeResponse, 2, extensionHandshakeResponse.length);
         Map<String, Object> extensionDict = new Bencode(false).decode(extensionDictBytes, Type.DICTIONARY);
-        Map<String, Long> metaDataIDMap = new HashMap<>();
-        Map<String, Long> m = (Map<String, Long>) extensionDict.get("m");
-        for (Map.Entry<String, Long> entry : m.entrySet()) {
+        Map<String, Object> metaDataIDMap = new HashMap<>();
+        Map<String, Object> m = (Map<String, Object>) extensionDict.get("m");
+        for (Map.Entry<String, Object> entry : m.entrySet()) {
             metaDataIDMap.put(entry.getKey(), entry.getValue());
         }
         return metaDataIDMap;
+    }
+
+    public static byte[] createMetadataRequestMessage(int messageType, int pieceIndex, long extensionId) {
+Map<String, Integer> metadataRequestDict = new HashMap<>();
+        metadataRequestDict.put("msg_type", messageType);
+        metadataRequestDict.put("piece", pieceIndex);
+        byte[] metadataRequestDictBytes = new Bencode(true).encode(metadataRequestDict);
+        // create byte array for the metadata request message with a 4 byte length prefix, 1 byte message ID, and the metadata request dictionary
+        ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 1 + metadataRequestDictBytes.length);
+        buffer.putInt(2 + metadataRequestDictBytes.length);
+        buffer.put((byte) 20);
+        buffer.put((byte) extensionId);
+        buffer.put(metadataRequestDictBytes);
+        System.out.println("Metadata request message created");
+        return buffer.array();
+    }
+
+    public static Pair<TCPService, Long> performMagnetHandshake(String magnetURL) {
+        Map<String, String> magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+        System.out.println("Magnet Info: " + magnetInfo);
+        List<String> peerList = TorrentDownloader.getPeerListFromMagnetInfo(magnetInfo);
+        TCPService tcpService = null;
+        for (String peer : peerList) {
+            String peerIP = peer.split(":")[0];
+            Integer peerPort = Integer.parseInt(peer.split(":")[1]);
+            try {
+                Socket socket = new Socket(peerIP, peerPort);
+                tcpService = new TCPService(socket);
+                TorrentDownloader.performHandshake(magnetInfo.get("xt").split(":")[2], tcpService, true);
+                // wait for bitfield message
+                byte[] bitfieldMessage = tcpService.waitForMessage();
+                if (bitfieldMessage[0] != 5) {
+                    System.out.println("Expected bitfield message, received different message type: " + bitfieldMessage[4]);
+                }
+                System.out.println("Received bitfield message");
+                // send extension handshake
+                List<String> extensionList = new ArrayList<>();
+                extensionList.add("ut_metadata");
+                byte[] extensionHandshakeMessage = TorrentDownloader.createExtensionHandshakeMessage(extensionList);
+                tcpService.sendMessage(extensionHandshakeMessage);
+                byte[] extensionHandshakeResponse = tcpService.waitForMessage();
+                Map<String, Object> metaDataIDMap = TorrentDownloader.parseExtensionHandshakeResponse(extensionHandshakeResponse);
+                System.out.println("Peer Metadata Extension ID: " + metaDataIDMap.get("ut_metadata"));
+                return Pair.of(tcpService, (long) metaDataIDMap.get("ut_metadata"));
+            } catch (Exception e) {
+                System.out.println("Failed to connect to peer: " + peer + " - " + e.getMessage());
+            }
+        }
+        return null;
     }
 }
