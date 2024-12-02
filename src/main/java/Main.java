@@ -6,6 +6,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -87,6 +89,9 @@ public class Main {
             break;
         case "magnet_info":
             magnetURL = args[1];
+            Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+            String infoHash = params.get("xt").split(":")[2];
+            String trackerURL = params.get("tr");
             Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshake(magnetURL);
             TCPService tcpService = handshakeResult.getLeft();
             long extensionId = handshakeResult.getRight();
@@ -96,6 +101,23 @@ public class Main {
             }
             byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, extensionId);
             tcpService.sendMessage(metadataRequestMessage);
+            byte[] metadataResponse = tcpService.waitForMessage();
+            Map<String, Object> metadataPieceDict = TorrentDownloader.getMetadataFromMessage(metadataResponse);
+            System.out.println("Tracker URL: " + trackerURL);
+            System.out.println("Length: " + metadataPieceDict.get("length"));
+            String calculatedInfoHash = Utils.calculateSHA1(new Bencode(true).encode(metadataPieceDict));
+            if (!calculatedInfoHash.equals(infoHash)) {
+                System.out.println("Info hash mismatch, expected " + infoHash + " but got " + calculatedInfoHash);
+                return;
+            }
+            System.out.println("Info Hash: " + infoHash);
+            System.out.println("Piece Length: " + metadataPieceDict.get("piece length"));
+            System.out.println("Piece Hashes:");
+            byte[] pieceHashBytes = ((ByteBuffer) metadataPieceDict.get("pieces")).array();
+            List<String> pieceHashes = Torrent.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
+            for (int i = 0; i < pieceHashes.size(); i++) {
+                System.out.println(pieceHashes.get(i));
+            }
             break;
         case "download_piece":
             String pieceStoragePath = args[2];

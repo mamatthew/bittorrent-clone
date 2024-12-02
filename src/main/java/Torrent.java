@@ -33,7 +33,7 @@ public class Torrent {
         this.infoHash = Utils.calculateSHA1(bencode2.encode(bencodedInfoDict));
     }
 
-    private List<String> splitPieceHashes(byte[] pieces, int pieceLength, List<String> pieceHashes) {
+    public static List<String> splitPieceHashes(byte[] pieces, int pieceLength, List<String> pieceHashes) {
         for (int i = 0; i < pieces.length; i += pieceLength) {
             String pieceHashString = Utils.byteToHexString(Arrays.copyOfRange(pieces, i, i + pieceLength));
             pieceHashes.add(pieceHashString);

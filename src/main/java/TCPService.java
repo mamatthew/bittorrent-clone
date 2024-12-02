@@ -68,7 +68,6 @@ public class TCPService {
         }
     }
 
-
     public byte[] waitForHandshakeResponse() {
         try {
             byte[] handshakeResponse = new byte[68];
