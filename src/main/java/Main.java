@@ -22,6 +22,7 @@ public class Main {
         List<String> peerList;
     String peerIPAndPort;
     String magnetURL;
+    String pieceStoragePath;
     switch(command) {
         case "decode":
             String bencodedValue = args[1];
@@ -37,15 +38,7 @@ public class Main {
         case "info":
             torrentFilePath = args[1];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
-            System.out.println("Tracker URL: " + torrent.getTrackerURL());
-            System.out.println("Length: " + torrent.getLength());
-            System.out.println("Info Hash: " + torrent.getInfoHash());
-            System.out.println("Piece Length: " + torrent.getPieceLength());
-            System.out.println("Piece Hashes:");
-            List<String> pieces = torrent.getPieces();
-            for (int i = 0; i < pieces.size(); i++) {
-                System.out.println(pieces.get(i));
-            }
+            torrent.printInfo();
             break;
         case "peers":
             torrentFilePath = args[1];
@@ -89,43 +82,52 @@ public class Main {
             break;
         case "magnet_info":
             magnetURL = args[1];
-            Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
-            String infoHash = params.get("xt").split(":")[2];
-            String trackerURL = params.get("tr");
-            Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshake(magnetURL);
-            TCPService tcpService = handshakeResult.getLeft();
-            long extensionId = handshakeResult.getRight();
-            if (tcpService == null) {
-                System.out.println("Failed to connect to any peers");
-                return;
-            }
-            byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, extensionId);
-            tcpService.sendMessage(metadataRequestMessage);
-            byte[] metadataResponse = tcpService.waitForMessage();
-            Map<String, Object> metadataPieceDict = TorrentDownloader.getMetadataFromMessage(metadataResponse);
-            System.out.println("Tracker URL: " + trackerURL);
-            System.out.println("Length: " + metadataPieceDict.get("length"));
-            String calculatedInfoHash = Utils.calculateSHA1(new Bencode(true).encode(metadataPieceDict));
-            if (!calculatedInfoHash.equals(infoHash)) {
-                System.out.println("Info hash mismatch, expected " + infoHash + " but got " + calculatedInfoHash);
-                return;
-            }
-            System.out.println("Info Hash: " + infoHash);
-            System.out.println("Piece Length: " + metadataPieceDict.get("piece length"));
-            System.out.println("Piece Hashes:");
-            byte[] pieceHashBytes = ((ByteBuffer) metadataPieceDict.get("pieces")).array();
-            List<String> pieceHashes = Torrent.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
-            for (int i = 0; i < pieceHashes.size(); i++) {
-                System.out.println(pieceHashes.get(i));
-            }
+            torrent = getTorrentFromMagnetURL(magnetURL).getLeft();
+            torrent.printInfo();
             break;
         case "download_piece":
-            String pieceStoragePath = args[2];
+            pieceStoragePath = args[2];
             torrentFilePath = args[3];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             int pieceIndex = Integer.parseInt(args[4]);
-            byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex);
+            byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex, false);
             Utils.writePieceToFile(pieceStoragePath, piece);
+            break;
+        case "magnet_download_piece":
+            pieceStoragePath = args[2];
+            magnetURL = args[3];
+            pieceIndex = Integer.parseInt(args[4]);
+            Pair<Torrent, TCPService> pair = getTorrentFromMagnetURL(magnetURL);
+            torrent = pair.getLeft();
+            torrent.printInfo();
+            TCPService tcpService = pair.getRight();
+            try {
+                piece = TorrentDownloader.downloadPieceHelper(tcpService, (int) torrent.getPieceLength(pieceIndex), pieceIndex);
+                Utils.writePieceToFile(pieceStoragePath, piece);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+//            Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+//            // get list of peers
+//            List<String> peers= TorrentDownloader.getPeerListFromMagnetInfo(params);
+//            // print out list of peers
+//            for (String peer : peers) {
+//                try (Socket socket = new Socket(peer.split(":")[0], Integer.parseInt(peer.split(":")[1]))) {
+//                    TCPService tcpService = new TCPService(socket);
+//                    Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshakeOnPeer(tcpService, params);
+//                    byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, handshakeResult.getRight());
+//                    tcpService.sendMessage(metadataRequestMessage);
+//                    byte[] metadataResponse = tcpService.waitForMessage();
+//                    Map<String, Object> metadataPieceDict = TorrentDownloader.getMetadataFromMessage(metadataResponse);
+//                    System.out.println("Metadata piece: " + metadataPieceDict);
+//                    piece = TorrentDownloader.downloadPieceHelper(((Number) metadataPieceDict.get("piece length")).intValue(), tcpService, pieceIndex);
+//                    Utils.writePieceToFile(pieceStoragePath, piece);
+//                    break;
+//                } catch (Exception e) {
+//                    System.out.println("Failed to connect to peer: " + peer);
+//                }
+//            }
+
             break;
         case "download":
             String storageFilePath = args[2];
@@ -133,12 +135,42 @@ public class Main {
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             // sout number of pieces
             System.out.println("Number of pieces: " + torrent.getPieces().size());
-            TorrentDownloader.downloadTorrent(torrent, storageFilePath);
+            TorrentDownloader.downloadTorrent(torrent, storageFilePath, false);
             break;
         default:
             System.out.println("Unknown command: " + command);
     }
   }
+
+    private static Pair<Torrent, TCPService> getTorrentFromMagnetURL(String magnetURL) {
+        Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+        String infoHash = params.get("xt").split(":")[2];
+        String trackerURL = params.get("tr");
+        Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshake(magnetURL);
+        TCPService tcpService = handshakeResult.getLeft();
+        long extensionId = handshakeResult.getRight();
+        if (tcpService == null) {
+            throw new RuntimeException("Failed to connect to any peers");
+        }
+        System.out.println("Extension ID: " + extensionId);
+        byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, extensionId);
+        tcpService.sendMessage(metadataRequestMessage);
+        byte[] metadataResponse = tcpService.waitForMessage();
+        Map<String, Object> metadataPieceDict = TorrentDownloader.getMetadataFromMessage(metadataResponse);
+        String calculatedInfoHash = Utils.calculateSHA1(new Bencode(true).encode(metadataPieceDict));
+        if (!calculatedInfoHash.equals(infoHash)) {
+            throw new RuntimeException("Info hash mismatch, expected " + infoHash + " but got " + calculatedInfoHash);
+        }
+        byte[] pieceHashBytes = ((ByteBuffer) metadataPieceDict.get("pieces")).array();
+        List<String> pieceHashes = Torrent.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
+        return Pair.of(new Torrent.Builder()
+                .setTrackerURL(trackerURL)
+                .setLength(((Number) metadataPieceDict.get("length")).longValue())
+                .setInfoHash(infoHash)
+                .setPieceLength(((Number) metadataPieceDict.get("piece length")).longValue())
+                .setPieces(pieceHashes)
+                .build(), tcpService);
+    }
 
     public static Object decodeBencode(byte[] bencodedBytes) {
     Bencode bencode = new Bencode();

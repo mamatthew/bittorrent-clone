@@ -33,6 +33,64 @@ public class Torrent {
         this.infoHash = Utils.calculateSHA1(bencode2.encode(bencodedInfoDict));
     }
 
+    private Torrent() {
+
+    }
+
+    public void printInfo() {
+        System.out.println("Tracker URL: " + trackerURL);
+        System.out.println("Length: " + length);
+        System.out.println("Info Hash: " + infoHash);
+        System.out.println("Piece Length: " + pieceLength);
+        System.out.println("Piece Hashes:");
+        for (String piece : pieces) {
+            System.out.println(piece);
+        }
+    }
+
+    public static class Builder {
+        private String trackerURL;
+        private long length;
+        private String infoHash;
+        private long pieceLength;
+        private List<String> pieces;
+
+        public Builder setTrackerURL(String trackerURL) {
+            this.trackerURL = trackerURL;
+            return this;
+        }
+
+        public Builder setLength(long length) {
+            this.length = length;
+            return this;
+        }
+
+        public Builder setInfoHash(String infoHash) {
+            this.infoHash = infoHash;
+            return this;
+        }
+
+        public Builder setPieceLength(long pieceLength) {
+            this.pieceLength = pieceLength;
+            return this;
+        }
+
+        public Builder setPieces(List<String> pieces) {
+            this.pieces = pieces;
+            return this;
+        }
+
+        public Torrent build() {
+            Torrent torrent = new Torrent();
+            torrent.trackerURL = this.trackerURL;
+            torrent.length = this.length;
+            torrent.infoHash = this.infoHash;
+            torrent.pieceLength = this.pieceLength;
+            torrent.pieces = this.pieces;
+            return torrent;
+        }
+    }
+
     public static List<String> splitPieceHashes(byte[] pieces, int pieceLength, List<String> pieceHashes) {
         for (int i = 0; i < pieces.length; i += pieceLength) {
             String pieceHashString = Utils.byteToHexString(Arrays.copyOfRange(pieces, i, i + pieceLength));
