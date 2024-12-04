@@ -1,10 +1,11 @@
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 
-public class TCPService {
+public class TCPService implements Closeable {
 
     private InputStream in;
     private OutputStream out;
@@ -79,5 +80,11 @@ public class TCPService {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        in.close();
+        out.close();
     }
 }

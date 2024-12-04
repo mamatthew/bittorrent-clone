@@ -107,27 +107,6 @@ public class Main {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-//            Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
-//            // get list of peers
-//            List<String> peers= TorrentDownloader.getPeerListFromMagnetInfo(params);
-//            // print out list of peers
-//            for (String peer : peers) {
-//                try (Socket socket = new Socket(peer.split(":")[0], Integer.parseInt(peer.split(":")[1]))) {
-//                    TCPService tcpService = new TCPService(socket);
-//                    Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshakeOnPeer(tcpService, params);
-//                    byte[] metadataRequestMessage = TorrentDownloader.createMetadataRequestMessage(0, 0, handshakeResult.getRight());
-//                    tcpService.sendMessage(metadataRequestMessage);
-//                    byte[] metadataResponse = tcpService.waitForMessage();
-//                    Map<String, Object> metadataPieceDict = TorrentDownloader.getMetadataFromMessage(metadataResponse);
-//                    System.out.println("Metadata piece: " + metadataPieceDict);
-//                    piece = TorrentDownloader.downloadPieceHelper(((Number) metadataPieceDict.get("piece length")).intValue(), tcpService, pieceIndex);
-//                    Utils.writePieceToFile(pieceStoragePath, piece);
-//                    break;
-//                } catch (Exception e) {
-//                    System.out.println("Failed to connect to peer: " + peer);
-//                }
-//            }
-
             break;
         case "download":
             String storageFilePath = args[2];
@@ -136,6 +115,20 @@ public class Main {
             // sout number of pieces
             System.out.println("Number of pieces: " + torrent.getPieces().size());
             TorrentDownloader.downloadTorrent(torrent, storageFilePath, false);
+            break;
+        case "magnet_download":
+            storageFilePath = args[2];
+            magnetURL = args[3];
+            pair = getTorrentFromMagnetURL(magnetURL);
+            torrent = pair.getLeft();
+            tcpService = pair.getRight();
+            try {
+                tcpService.close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            System.out.println("downloadTorrent");
+            TorrentDownloader.downloadTorrent(torrent, storageFilePath, true);
             break;
         default:
             System.out.println("Unknown command: " + command);

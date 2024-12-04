@@ -33,12 +33,14 @@ public class TorrentDownloader {
     public static byte[] downloadPieceFromPeer(Torrent torrent, String peer, int index, boolean isMagnetHandshake) {
         try (Socket socket = new Socket(peer.split(":")[0], Integer.parseInt(peer.split(":")[1]))) {
             TCPService tcpService = new TCPService(socket);
-            performHandshake(torrent.getInfoHash(), tcpService, false);
-            if (isMagnetHandshake) {
-                performHandshake(torrent.getInfoHash(), tcpService, true);
-            }
             int pieceLength = (int) torrent.getPieceLength(index);
-            return downloadPieceHelper(pieceLength, tcpService, index);
+            if (isMagnetHandshake) {
+                performMagnetHandshakeOnPeer(tcpService, torrent.getInfoHash());
+                return downloadPieceHelper(tcpService, pieceLength, index);
+            } else {
+                performHandshake(torrent.getInfoHash(), tcpService, false);
+                return downloadPieceHelper(pieceLength, tcpService, index);
+            }
         } catch (Exception e) {
             throw new RuntimeException("Error downloading piece from peer: " + e.getMessage());
         }
@@ -351,7 +353,6 @@ public class TorrentDownloader {
             m.put(extension, 1);
         }
         extensionDict.put("m", m);
-        System.out.println("Extension Dictionary: " + extensionDict);
         byte[] extensionDictBytes = new Bencode(true).encode(extensionDict);
         // create byte array for the extension handshake message with a 4 byte length prefix, 1 byte message ID, 1 byte extension messageid, and the extension dictionary
         ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 1 + extensionDictBytes.length);
@@ -385,8 +386,8 @@ Map<String, Integer> metadataRequestDict = new HashMap<>();
         return buffer.array();
     }
 
-    public static Pair<TCPService, Long> performMagnetHandshakeOnPeer(TCPService tcpService, Map<String, String> magnetInfo) {
-        TorrentDownloader.performHandshake(magnetInfo.get("xt").split(":")[2], tcpService, true);
+    public static Pair<TCPService, Long> performMagnetHandshakeOnPeer(TCPService tcpService, String infohash) {
+        TorrentDownloader.performHandshake(infohash, tcpService, true);
         // wait for bitfield message
         byte[] bitfieldMessage = tcpService.waitForMessage();
         if (bitfieldMessage[0] != 5) {
@@ -401,7 +402,6 @@ Map<String, Integer> metadataRequestDict = new HashMap<>();
         tcpService.sendMessage(extensionHandshakeMessage);
         byte[] extensionHandshakeResponse = tcpService.waitForMessage();
         Map<String, Object> metaDataIDMap = TorrentDownloader.parseExtensionHandshakeResponse(extensionHandshakeResponse);
-        System.out.println("metaDataIDMap: " + metaDataIDMap);
         System.out.println("Peer Metadata Extension ID: " + metaDataIDMap.get("ut_metadata"));
         return Pair.of(tcpService, (long) metaDataIDMap.get("ut_metadata"));
     }
@@ -410,7 +410,7 @@ Map<String, Integer> metadataRequestDict = new HashMap<>();
         try {
             Socket socket = new Socket(peerIP, peerPort);
             tcpService = new TCPService(socket);
-            return performMagnetHandshakeOnPeer(tcpService, magnetInfo);
+            return performMagnetHandshakeOnPeer(tcpService, magnetInfo.get("xt").split(":")[2]);
         } catch (Exception e) {
             System.out.println("Failed to connect to peer: " + peerIP + ":" + peerPort + " - " + e.getMessage());
         }
@@ -432,11 +432,9 @@ Map<String, Integer> metadataRequestDict = new HashMap<>();
     public static Map<String, Object> getMetadataFromMessage(byte[] metadataResponse) {
         byte[] payloadBytes = Arrays.copyOfRange(metadataResponse, 2, metadataResponse.length);
         Map<String, Object> metadataDict = new Bencode(false).decode(payloadBytes, Type.DICTIONARY);
-        System.out.println("Metadata Dictionary: " + metadataDict);
         int metadataPieceLength = ((Number) metadataDict.get("total_size")).intValue();
         byte[] metadataPieceBytes = Arrays.copyOfRange(payloadBytes, payloadBytes.length - metadataPieceLength, payloadBytes.length);
         Map<String, Object> metadataPieceDict = new Bencode(true).decode(metadataPieceBytes, Type.DICTIONARY);
-        System.out.println("Metadata Piece Dictionary: " + metadataPieceDict);
         return metadataPieceDict;
     }
 }
