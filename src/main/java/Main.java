@@ -1,6 +1,4 @@
 import com.dampcake.bencode.Bencode;
-import com.dampcake.bencode.Type;
-import com.google.gson.Gson;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
@@ -13,7 +11,6 @@ import java.util.Map;
 
 public class Main {
 
-    private static final Gson gson = new Gson();
 
     public static void main(String[] args) {
         String command = args[0];
@@ -26,14 +23,7 @@ public class Main {
     switch(command) {
         case "decode" -> {
             String bencodedValue = args[1];
-            Object decoded;
-            try {
-                decoded = decodeBencode(bencodedValue.getBytes());
-            } catch (RuntimeException e) {
-                System.out.println(e.getMessage());
-                return;
-            }
-            System.out.println(gson.toJson(decoded));
+            Codec.decodeAndPrintBencodedString(bencodedValue);
         }
         case "info" -> {
             torrentFilePath = args[1];
@@ -162,24 +152,4 @@ public class Main {
                 .setPieces(pieceHashes)
                 .build(), tcpService);
     }
-
-    public static Object decodeBencode(byte[] bencodedBytes) {
-        Bencode bencode = new Bencode();
-        if (Character.isDigit((char) bencodedBytes[0])) {
-            String decodedString = bencode.decode(bencodedBytes, Type.STRING);
-            return decodedString;
-        } else if (bencodedBytes[0] == 'i') {
-            Long decodedInt = bencode.decode(bencodedBytes, Type.NUMBER);
-            return decodedInt;
-        } else if (bencodedBytes[0] == 'l') {
-            List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
-            return decodedList;
-        } else if (bencodedBytes[0] == 'd') {
-            Map<String, Object> decodedDict = bencode.decode(bencodedBytes, Type.DICTIONARY);
-            return decodedDict;
-        } else {
-            throw new RuntimeException("Unsupported bencode type");
-        }
-  }
-
-}
+    }

@@ -121,7 +121,7 @@ public class TorrentDownloader {
 
     static Torrent getTorrentFromPath(String torrentFilePath) {
         byte[] torrentFileBytes = Utils.readTorrentFile(torrentFilePath);
-        Torrent torrent = new Torrent(torrentFileBytes);
+        Torrent torrent = Torrent.fromBytes(torrentFileBytes);
         return torrent;
     }
 
