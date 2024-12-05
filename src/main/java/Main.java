@@ -16,31 +16,31 @@ public class Main {
     private static final Gson gson = new Gson();
 
     public static void main(String[] args) {
-    String command = args[0];
-    Torrent torrent;
-    String torrentFilePath;
+        String command = args[0];
+        String torrentFilePath;
+        Torrent torrent;
         List<String> peerList;
-    String peerIPAndPort;
-    String magnetURL;
-    String pieceStoragePath;
+        String peerIPAndPort;
+        String magnetURL;
+        String pieceStoragePath;
     switch(command) {
-        case "decode":
+        case "decode" -> {
             String bencodedValue = args[1];
             Object decoded;
             try {
-              decoded = decodeBencode(bencodedValue.getBytes());
-            } catch(RuntimeException e) {
-              System.out.println(e.getMessage());
-              return;
+                decoded = decodeBencode(bencodedValue.getBytes());
+            } catch (RuntimeException e) {
+                System.out.println(e.getMessage());
+                return;
             }
             System.out.println(gson.toJson(decoded));
-            break;
-        case "info":
+        }
+        case "info" -> {
             torrentFilePath = args[1];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             torrent.printInfo();
-            break;
-        case "peers":
+        }
+        case "peers" -> {
             torrentFilePath = args[1];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             try {
@@ -55,9 +55,8 @@ public class Main {
             for (String peer : peerList) {
                 System.out.println(peer);
             }
-
-            break;
-        case "handshake":
+        }
+        case "handshake" -> {
             torrentFilePath = args[1];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             peerIPAndPort = args[2];
@@ -69,59 +68,59 @@ public class Main {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            break;
-        case "magnet_parse":
+        }
+        case "magnet_parse" -> {
             String magnetURI = args[1];
             Map<String,String> magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURI);
             System.out.println("Tracker URL: " + magnetInfo.get("tr"));
             System.out.println("Info Hash: " + magnetInfo.get("xt").split(":")[2]);
-            break;
-        case "magnet_handshake":
+        }
+        case "magnet_handshake" -> {
             magnetURL = args[1];
             TorrentDownloader.performMagnetHandshake(magnetURL);
-            break;
-        case "magnet_info":
+        }
+        case "magnet_info" -> {
             magnetURL = args[1];
             torrent = getTorrentFromMagnetURL(magnetURL).getLeft();
             torrent.printInfo();
-            break;
-        case "download_piece":
+        }
+        case "download_piece" -> {
             pieceStoragePath = args[2];
             torrentFilePath = args[3];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             int pieceIndex = Integer.parseInt(args[4]);
             byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex, false);
             Utils.writePieceToFile(pieceStoragePath, piece);
-            break;
-        case "magnet_download_piece":
+        }
+        case "magnet_download_piece" -> {
             pieceStoragePath = args[2];
             magnetURL = args[3];
-            pieceIndex = Integer.parseInt(args[4]);
+            int pieceIndex = Integer.parseInt(args[4]);
             Pair<Torrent, TCPService> pair = getTorrentFromMagnetURL(magnetURL);
             torrent = pair.getLeft();
             torrent.printInfo();
             TCPService tcpService = pair.getRight();
             try {
-                piece = TorrentDownloader.downloadPieceHelper(tcpService, (int) torrent.getPieceLength(pieceIndex), pieceIndex);
+                byte[] piece = TorrentDownloader.downloadPieceHelper(tcpService, (int) torrent.getPieceLength(pieceIndex), pieceIndex);
                 Utils.writePieceToFile(pieceStoragePath, piece);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            break;
-        case "download":
+        }
+        case "download" -> {
             String storageFilePath = args[2];
             torrentFilePath = args[3];
             torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
             // sout number of pieces
             System.out.println("Number of pieces: " + torrent.getPieces().size());
             TorrentDownloader.downloadTorrent(torrent, storageFilePath, false);
-            break;
-        case "magnet_download":
-            storageFilePath = args[2];
+        }
+        case "magnet_download" -> {
+            String storageFilePath = args[2];
             magnetURL = args[3];
-            pair = getTorrentFromMagnetURL(magnetURL);
+            Pair<Torrent, TCPService> pair = getTorrentFromMagnetURL(magnetURL);
             torrent = pair.getLeft();
-            tcpService = pair.getRight();
+            TCPService tcpService = pair.getRight();
             try {
                 tcpService.close();
             } catch (IOException e) {
@@ -129,9 +128,8 @@ public class Main {
             }
             System.out.println("downloadTorrent");
             TorrentDownloader.downloadTorrent(torrent, storageFilePath, true);
-            break;
-        default:
-            System.out.println("Unknown command: " + command);
+        }
+        default -> System.out.println("Unknown command: " + command);
     }
   }
 
@@ -166,22 +164,22 @@ public class Main {
     }
 
     public static Object decodeBencode(byte[] bencodedBytes) {
-    Bencode bencode = new Bencode();
-      if (Character.isDigit((char) bencodedBytes[0])) {
-        String decodedString = bencode.decode(bencodedBytes, Type.STRING);
-        return decodedString;
-      } else if (bencodedBytes[0] == 'i') {
-        Long decodedInt = bencode.decode(bencodedBytes, Type.NUMBER);
-        return decodedInt;
-      } else if (bencodedBytes[0] == 'l') {
-        List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
-        return decodedList;
-      } else if (bencodedBytes[0] == 'd') {
-        Map<String, Object> decodedDict = bencode.decode(bencodedBytes, Type.DICTIONARY);
-        return decodedDict;
-      } else {
-        throw new RuntimeException("Unsupported bencode type");
-      }
+        Bencode bencode = new Bencode();
+        if (Character.isDigit((char) bencodedBytes[0])) {
+            String decodedString = bencode.decode(bencodedBytes, Type.STRING);
+            return decodedString;
+        } else if (bencodedBytes[0] == 'i') {
+            Long decodedInt = bencode.decode(bencodedBytes, Type.NUMBER);
+            return decodedInt;
+        } else if (bencodedBytes[0] == 'l') {
+            List<Object> decodedList = bencode.decode(bencodedBytes, Type.LIST);
+            return decodedList;
+        } else if (bencodedBytes[0] == 'd') {
+            Map<String, Object> decodedDict = bencode.decode(bencodedBytes, Type.DICTIONARY);
+            return decodedDict;
+        } else {
+            throw new RuntimeException("Unsupported bencode type");
+        }
   }
 
 }
