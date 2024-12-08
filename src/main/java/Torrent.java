@@ -3,7 +3,6 @@ import com.dampcake.bencode.Type;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +28,7 @@ public final class Torrent {
         Bencode bencode2 = new Bencode(true);
         Map<String, Object> bencodedInfoDict = (Map<String, Object>) bencode2.decode(fileBytes, Type.DICTIONARY).get("info");
         byte[] pieceHashBytes = ((ByteBuffer) bencodedInfoDict.get("pieces")).array();
-        List<String> pieces = splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
+        List<String> pieces = TorrentUtils.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
         String infoHash = Utils.calculateSHA1(bencode2.encode(bencodedInfoDict));
 
         return new Torrent.Builder()
@@ -96,14 +95,6 @@ public final class Torrent {
             Torrent torrent = new Torrent(this);
             return torrent;
         }
-    }
-
-    public static List<String> splitPieceHashes(byte[] pieces, int pieceLength, List<String> pieceHashes) {
-        for (int i = 0; i < pieces.length; i += pieceLength) {
-            String pieceHashString = Utils.byteToHexString(Arrays.copyOfRange(pieces, i, i + pieceLength));
-            pieceHashes.add(pieceHashString);
-        }
-        return pieceHashes;
     }
 
     public String getTrackerURL() {

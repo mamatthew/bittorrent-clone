@@ -5,8 +5,16 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Random;
 
 public class Utils {
+
+    public static byte[] getRandomBytes(int length) {
+        byte[] bytes = new byte[length];
+        new Random().nextBytes(bytes);
+        return bytes;
+    }
+
     public static byte[] readTorrentFile(String torrentFilePath) {
         try {
             Path path = Paths.get(torrentFilePath);

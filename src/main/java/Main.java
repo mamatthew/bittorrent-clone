@@ -3,14 +3,12 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.net.Socket;
-import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class Main {
-
 
     public static void main(String[] args) {
         String command = args[0];
@@ -27,28 +25,24 @@ public class Main {
         }
         case "info" -> {
             torrentFilePath = args[1];
-            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
             torrent.printInfo();
         }
         case "peers" -> {
             torrentFilePath = args[1];
-            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
             try {
                 peerList = TorrentDownloader.getPeerList(torrent);
-            } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            for (String peer : peerList) {
-                System.out.println(peer);
+                for (String peer : peerList) {
+                    System.out.println(peer);
+                }
+            } catch (Exception e) {
+                System.out.println("Failed to get peer list: " + e.getMessage());
             }
         }
         case "handshake" -> {
             torrentFilePath = args[1];
-            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
             peerIPAndPort = args[2];
             String peerIP = peerIPAndPort.split(":")[0];
             int peerPort = Integer.parseInt(peerIPAndPort.split(":")[1]);
@@ -61,7 +55,7 @@ public class Main {
         }
         case "magnet_parse" -> {
             String magnetURI = args[1];
-            Map<String,String> magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURI);
+            Map<String,String> magnetInfo = TorrentUtils.getParamsFromMagnetURL(magnetURI);
             System.out.println("Tracker URL: " + magnetInfo.get("tr"));
             System.out.println("Info Hash: " + magnetInfo.get("xt").split(":")[2]);
         }
@@ -77,7 +71,7 @@ public class Main {
         case "download_piece" -> {
             pieceStoragePath = args[2];
             torrentFilePath = args[3];
-            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
             int pieceIndex = Integer.parseInt(args[4]);
             byte[] piece = TorrentDownloader.downloadPiece(torrent, pieceIndex, false);
             Utils.writePieceToFile(pieceStoragePath, piece);
@@ -100,7 +94,7 @@ public class Main {
         case "download" -> {
             String storageFilePath = args[2];
             torrentFilePath = args[3];
-            torrent = TorrentDownloader.getTorrentFromPath(torrentFilePath);
+            torrent = TorrentUtils.getTorrentFromPath(torrentFilePath);
             // sout number of pieces
             System.out.println("Number of pieces: " + torrent.getPieces().size());
             TorrentDownloader.downloadTorrent(torrent, storageFilePath, false);
@@ -124,7 +118,7 @@ public class Main {
   }
 
     private static Pair<Torrent, TCPService> getTorrentFromMagnetURL(String magnetURL) {
-        Map<String, String> params = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+        Map<String, String> params = TorrentUtils.getParamsFromMagnetURL(magnetURL);
         String infoHash = params.get("xt").split(":")[2];
         String trackerURL = params.get("tr");
         Pair<TCPService, Long> handshakeResult = TorrentDownloader.performMagnetHandshake(magnetURL);
@@ -143,7 +137,7 @@ public class Main {
             throw new RuntimeException("Info hash mismatch, expected " + infoHash + " but got " + calculatedInfoHash);
         }
         byte[] pieceHashBytes = ((ByteBuffer) metadataPieceDict.get("pieces")).array();
-        List<String> pieceHashes = Torrent.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
+        List<String> pieceHashes = TorrentUtils.splitPieceHashes(pieceHashBytes, 20, new ArrayList<>());
         return Pair.of(new Torrent.Builder()
                 .setTrackerURL(trackerURL)
                 .setLength(((Number) metadataPieceDict.get("length")).longValue())

@@ -4,9 +4,8 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.*;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
+import java.net.Socket;
+import java.net.URISyntaxException;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -117,47 +116,6 @@ public class TorrentDownloader {
             offset += blockLength;
         }
         return piece;
-    }
-
-    static Torrent getTorrentFromPath(String torrentFilePath) {
-        byte[] torrentFileBytes = Utils.readTorrentFile(torrentFilePath);
-        Torrent torrent = Torrent.fromBytes(torrentFileBytes);
-        return torrent;
-    }
-
-    static List<String> getPeerList(Torrent torrent) throws URISyntaxException, IOException, InterruptedException {
-        String url = torrent.getTrackerURL();
-        String infoHash = new String(Utils.hexStringToByteArray(torrent.getInfoHash()),
-                StandardCharsets.ISO_8859_1);
-        Random random = new Random();
-        byte[] peerIdBytes = new byte[10];
-        random.nextBytes(peerIdBytes);
-        String peerId = Utils.byteToHexString(peerIdBytes);
-        int uploaded = 0;
-        int downloaded = 0;
-        long left = torrent.getLength();
-        int compact = 1;
-
-        HttpClient client = HttpClient.newHttpClient();
-        String requestURL = String.format("%s?info_hash=%s&peer_id=%s&port=%d&uploaded=%d&downloaded=%d&left=%d&compact=%d",
-                url,
-                URLEncoder.encode(infoHash, StandardCharsets.ISO_8859_1),
-                peerId,
-                PORT,
-                uploaded,
-                downloaded,
-                left,
-                compact);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(new URI(requestURL))
-                .GET()
-                .build();
-
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-
-        List<String> peerList = getPeerListFromHTTPResponse(response);
-        return peerList;
     }
 
     private static List<String> getPeerListFromHTTPResponse(HttpResponse<byte[]> response) {
@@ -286,64 +244,53 @@ public class TorrentDownloader {
         }
     }
 
+    static List<String> getPeerList(Torrent torrent) throws URISyntaxException, IOException, InterruptedException {
+        String url = torrent.getTrackerURL();
+        String infoHash = new String(Utils.hexStringToByteArray(torrent.getInfoHash()),
+                StandardCharsets.ISO_8859_1);
+        byte[] peerIdBytes = Utils.getRandomBytes(10);
+        String peerId = Utils.byteToHexString(peerIdBytes);
+
+        HttpClientService httpClientService = new HttpClientService();
+        String requestURL = httpClientService.newRequestURLBuilder(torrent.getTrackerURL())
+                .addParam("info_hash", infoHash)
+                .addParam("peer_id", peerId)
+                .addParam("port", String.valueOf(PORT))
+                .addParam("uploaded", "0")
+                .addParam("downloaded", "0")
+                .addParam("left", String.valueOf(torrent.getLength()))
+                .addParam("compact", "1")
+                .build();
+
+        HttpResponse<byte[]> response = httpClientService.sendGetRequest(requestURL);
+        return getPeerListFromHTTPResponse(response);
+    }
+
     public static List<String> getPeerListFromMagnetInfo(Map<String, String> magnetInfoMap) {
         // parse the magnet URL to extract the xt, dn, and tr parameters
         // perform a GET request to the tracker URL
         String infoHash = new String(Utils.hexStringToByteArray(magnetInfoMap.get("xt").split(":")[2]),
                 StandardCharsets.ISO_8859_1);
-        Random random = new Random();
-        byte[] peerIdBytes = new byte[10];
-        random.nextBytes(peerIdBytes);
+        byte[] peerIdBytes = Utils.getRandomBytes(10);
         String peerId = Utils.byteToHexString(peerIdBytes);
-        String trackerURL = String.format("%s?info_hash=%s&dn=%s&port=%d&downloaded=%d&uploaded=%d&left=%d&compact=%d&peer_id=%s",
-                magnetInfoMap.get("tr"),
-                URLEncoder.encode(infoHash, StandardCharsets.ISO_8859_1),
-                magnetInfoMap.get("dn"),
-                PORT,
-                0,
-                0,
-                1,
-                1,
-                peerId);
-        if (trackerURL == null) {
-            throw new RuntimeException("No tracker URL found in magnet URL: " + trackerURL);
-        }
+
+        HttpClientService httpClientService = new HttpClientService();
+        String requestURL = httpClientService.newRequestURLBuilder(magnetInfoMap.get("tr"))
+                .addParam("info_hash", infoHash)
+                .addParam("dn", magnetInfoMap.get("dn"))
+                .addParam("port", String.valueOf(PORT))
+                .addParam("downloaded", "0")
+                .addParam("uploaded", "0")
+                .addParam("left", "1")
+                .addParam("compact", "1")
+                .addParam("peer_id", peerId)
+                .build();
         try {
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(new URI(trackerURL))
-                    .GET()
-                    .build();
-            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = httpClientService.sendGetRequest(requestURL);
             return getPeerListFromHTTPResponse(response);
         } catch (Exception e) {
             throw new RuntimeException("Error getting peer list from tracker: " + e.getMessage());
         }
-
-
-
-
-    }
-
-    public static Map<String, String> getParamsFromMagnetURL(String magnetURL) {
-        Map<String, String> map = new HashMap<>();
-        String[] parts = magnetURL.split("\\?");
-        if (parts.length != 2) {
-            throw new RuntimeException("Invalid magnet URL: " + magnetURL);
-        }
-        String[] params = parts[1].split("&");
-        for (String param : params) {
-            String[] keyValue = param.split("=");
-            if (keyValue.length != 2) {
-                throw new RuntimeException("Invalid parameter: " + param);
-            }
-            if (keyValue[0].equals("tr")) {
-                map.put("tr", URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8));
-            } else {
-                map.put(keyValue[0], keyValue[1]);
-            }
-        }
-        return map;
     }
 
     public static byte[] createExtensionHandshakeMessage(List<String> extensionList) {
@@ -418,7 +365,7 @@ Map<String, Integer> metadataRequestDict = new HashMap<>();
     }
 
     public static Pair<TCPService, Long> performMagnetHandshake(String magnetURL) {
-        Map<String, String> magnetInfo = TorrentDownloader.getParamsFromMagnetURL(magnetURL);
+        Map<String, String> magnetInfo = TorrentUtils.getParamsFromMagnetURL(magnetURL);
         List<String> peerList = TorrentDownloader.getPeerListFromMagnetInfo(magnetInfo);
         for (String peer : peerList) {
             String peerIP = peer.split(":")[0];
